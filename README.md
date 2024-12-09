@@ -11,6 +11,9 @@
 3. openresty请求企微时通过lua脚本查询redis获取access_token对应的corpid
 4. 再通过一个内置的map关系文件拿到对应的上游地址去请求
 
+# 流程图
+![image](https://github.com/user-attachments/assets/be9a7fc4-6315-4713-a457-55d6b6b71a04)
+
 # 遇到的坑
 
 1. 不能使用openresty将resp body 请求写入redis，op只支持非阻塞性写入，但是可以通过异步来做(eof,但是有时效性问题，主要是会话存档)
