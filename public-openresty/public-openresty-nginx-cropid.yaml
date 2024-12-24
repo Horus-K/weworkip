@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: public-openresty-nginx-cropid
+data:
+  cropid_map.map: |-
+    "xxxxxxxx" "qywx-svc2";
+    "xxxxxxx2" "qywx-svc1";

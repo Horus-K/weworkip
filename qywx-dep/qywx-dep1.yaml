@@ -1,0 +1,89 @@
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: qywx-svc1
+spec:
+  ports:
+    - name: tcp-20000
+      protocol: TCP
+      port: 20000
+      targetPort: 20000
+  selector:
+    svc: qywx-svc1
+  type: ClusterIP
+  sessionAffinity: None
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qywx-dep1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: qywx-dep1
+  template:
+    metadata:
+      labels:
+        app: qywx-dep1
+        svc: qywx-svc1
+      annotations:
+        k8s.aliyun.com/pod-eip-instanceid: eip-xxxx (eip id)
+    spec:
+      volumes:
+        - name: podinfo
+          downwardAPI:
+            items:
+              - path: labels
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.labels
+              - path: annotations
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.annotations
+            defaultMode: 420
+      initContainers:
+        - name: init
+          image: busybox:1.28
+          command:
+            - timeout
+            - '-t'
+            - '60'
+            - sh
+            - '-c'
+            - >-
+              until grep -E '^k8s.aliyun.com\/allocated-eipAddress=\S?[0-9]+\S?'
+              /etc/podinfo/annotations; do echo waiting for annotations; sleep
+              2; done
+          resources: {}
+          volumeMounts:
+            - name: podinfo
+              mountPath: /etc/podinfo
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          imagePullPolicy: IfNotPresent
+      containers:
+        - name: qywx-dep1
+          image: proxy-qywx-openresty
+          ports:
+            - name: http
+              containerPort: 20000
+              protocol: TCP
+          env:
+            - name: TZ
+              value: Asia/Shanghai
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          imagePullPolicy: Always
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst
+      securityContext: {}
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 10
+  progressDeadlineSeconds: 600

@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: public-openresty-nginx-confd
+data:
+  qyapi.conf: |-
+    server {
+        listen 80 default;
+        set $wx_crop_id "";
+        set $wx_upstream "https://qyapi.weixin.qq.com";
+        set $wx_host "qyapi.weixin.qq.com";
+        location = /cgi-bin/gettoken {
+            # 请求gin
+            default_type text/html;
+            proxy_pass http://127.0.0.1:8080;
+        }
+        location / {
+            default_type text/html;
+            access_by_lua_file '/usr/local/openresty/nginx/lua/getredis.lua';
+            proxy_set_header Host $wx_host;
+            proxy_pass $wx_upstream;
+        }
+        location /health {
+          log_not_found off;
+          access_log off;
+          return 200 'ok';
+        }
+    }

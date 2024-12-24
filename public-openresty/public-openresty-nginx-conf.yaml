@@ -1,0 +1,64 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: public-openresty-nginx-conf
+data:
+  nginx.conf: >-
+    user  root;
+
+    #worker_processes 1; # Enables the use of JIT for regular expressions to
+    speed-up their processing.
+
+    pcre_jit on;
+
+    events {
+        worker_connections  1024;
+    }
+
+    http {
+        include       mime.types;
+        default_type  application/octet-stream;
+        resolver <集群dns地址> valid=5 ipv6=off;
+        #默认连接池大小, 默认30
+        lua_socket_pool_size 30;
+        #默认超时时间,默认60s
+        lua_socket_keepalive_timeout 60s;
+        # Log in JSON Format
+        log_format nginxlog_json escape=json '{"timestamp":"$time_iso8601","status":"$status","upstream_status":"$upstream_status","wx_crop_id":"$wx_crop_id","uri":"$uri","request_uri":"$request","request_time":"$request_time","upstream_addr":"$upstream_addr","upstream_response_time":"$upstream_response_time","host":"$host","remote_addr":"$remote_addr"}';
+
+        access_log /dev/stdout nginxlog_json;
+        error_log /dev/stdout notice;
+
+        # See Move default writable paths to a dedicated directory (#119)
+        # https://github.com/openresty/docker-openresty/issues/119
+        client_body_temp_path /var/run/openresty/nginx-client-body;
+        proxy_temp_path       /var/run/openresty/nginx-proxy;
+        fastcgi_temp_path     /var/run/openresty/nginx-fastcgi;
+        uwsgi_temp_path       /var/run/openresty/nginx-uwsgi;
+        scgi_temp_path        /var/run/openresty/nginx-scgi;
+
+        sendfile        on;
+        #tcp_nopush     on;
+
+        #keepalive_timeout  0;
+        keepalive_timeout  65;
+
+        #gzip  on;
+        map $http_upgrade $connection_upgrade {
+          default upgrade;
+          ''      close;
+        }
+
+        #include /etc/nginx/conf.d/*.conf;
+        client_header_buffer_size 2046k;
+        large_client_header_buffers 4 2046k;
+        client_max_body_size 500M;
+        client_body_buffer_size 100M;
+        lua_shared_dict crop_id 10m;
+        init_by_lua_file '/usr/local/openresty/nginx/lua/init_map.lua';
+
+        include conf.d/*.conf;
+
+        # Don't reveal OpenResty version to clients.
+        # server_tokens off;
+    }

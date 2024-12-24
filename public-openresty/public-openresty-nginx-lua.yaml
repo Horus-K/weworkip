@@ -1,0 +1,104 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: public-openresty-nginx-lua
+data:
+  getredis.lua: |
+    local redis = require("resty.redis");
+    local cjson = require("cjson")
+    local red = redis:new();
+    red:set_timeout(5000)
+    local host = ""
+    local port = 6379
+    local redis_password = ""
+    local access_token = ngx.var.arg_access_token
+
+    local function ret_def()
+        ngx.var.wx_upstream = "https://qyapi.weixin.qq.com"
+        ngx.var.wx_host = "qyapi.weixin.qq.com"
+        ngx.var.wx_crop_id = "no"
+    end
+
+    if type(access_token) == "nil" then
+        ret_def()
+        return
+    end
+    local keys = 'qwtoken:' .. access_token
+
+    -- 连接redis
+    local ok, err = red:connect(host, port)
+    if not ok then
+      io.stderr:write('cant connect redis\n')
+      ret_def()
+      return
+    end
+
+    local res, err = red:auth(redis_password)
+    if not res then
+      io.stderr:write('cant auth redis\n')
+      return
+    end
+
+    -- 选择db
+    ok, err = red:select(3)
+    if not ok then
+        io.stderr:write('failed to select db\n')
+        ret_def()
+        return
+    end
+
+    -- 获取redis key
+    local res, err = red:get(keys)
+    if not res then
+      io.stderr:write('cant get redis\n')
+      ret_def()
+      return
+    end
+
+    ok, err = red:set_keepalive(10000, 300) --线程池
+    if not ok then
+      io.stderr:write('cant close redis\n')
+      ret_def()
+      return
+    end
+    -- 将string转为map
+    local keys = ngx.shared.crop_id:get("a")
+    local my_table = cjson.decode(keys)
+    local value = my_table[res]
+
+    if value then
+        ngx.var.wx_crop_id = res
+        ngx.var.wx_upstream = "http://" .. value .. ".<命名空间>.svc.cluster.local:20000"
+        ngx.var.wx_host = "qyapi.weixin.qq.com"
+        -- 后续的服务会加这个HOST
+    else
+        ret_def()
+    end
+  init_map.lua: |-
+    local cjson = require("cjson")
+      local function load_map(file_path)
+          local map = {}
+          local file = io.open(file_path, "r")
+
+          if not file then
+              ngx.log(ngx.ERR, "Failed to open map file: ", file_path)
+              return map
+          end
+
+          for line in file:lines() do
+              local key, value = string.match(line, [["(%S+)"%s+"(%S+)";]])
+              if key and value then
+                  map[key] = value
+              end
+          end
+
+          file:close()
+          return map
+      end
+
+    local map_file_path = "/usr/local/openresty/nginx/cropid/cropid_map.map"
+    local tmp = load_map(map_file_path)
+    ngx.shared.crop_id:set("a", cjson.encode(tmp))
+    local keys = ngx.shared.crop_id:get("a")
+    io.stderr:write("\n---------------------------------\n")
+    io.stderr:write("JSON: ", keys, "\n")
